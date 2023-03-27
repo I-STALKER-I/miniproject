@@ -1,14 +1,20 @@
 import datetime
 
+class person :
+    _users = []
+    def __init__(self,id) :
+        self.id = id
+        self.last_cancel = None
 
+    def reservation_cancelation(self,date_time) :
+        self.last_cancel = date_time
 class ticket :
     _tickets = []
-    def __init__(self,date_time ,user_id ,ticket_dapar ,ticket_arrival,order) :
+    def __init__(self,date_time ,user_id ,ticket_dapar ,ticket_arrival) :
         self.date_time = date_time
         self.user_id = user_id
         self.departure = ticket_dapar
         self.arrival = ticket_arrival
-        self.order = order
 
     @property
     def date_time(self) :
@@ -29,11 +35,8 @@ class ticket :
     
     def __eq__(self,other_ticket) :
         if self.departure == other_ticket.departure and self.arrival == other_ticket.arrival and self.user_id == other_ticket.user_id :
-            for _train in train._trains :
-                if _train == self :
-                    if other_ticket.date_time - self.date_time >= datetime.timedelta(0,3600) :
-                        _train.sits += 1
-                        return True
+            return True
+        
         return False
     
 
@@ -63,8 +66,15 @@ class train :
 
         self._date_time = datetime.datetime(year ,month ,day ,hour ,minute)
     
-    def __ls__(self) :
-        pass
+    def sit_reservation(self) :
+        if self.sits > 0 :
+            self.sits -= 1
+            return True
+        
+        return False
+    
+    def sit_cancelation(self) :
+        self.sits += 1
 
     def __eq__(self,ticket) :
         if self.departure == ticket.departure and self.arrival == ticket.arrival :
@@ -74,69 +84,84 @@ class train :
         return False
 
 
-while True :
-    try : 
-        train_cnt = int(input())
-        break
-    except ValueError :
-        print("Error")
+try : 
+    train_cnt = int(input())
+
+except ValueError :
+    print("Error")
+    exit()
 
 for i in range(train_cnt) :
-    while True :
         try :
             train_departure ,train_arrival ,train_date_time ,train_sits = map(str ,input().split())
             new_train = train(train_departure ,train_arrival ,train_date_time ,train_sits)
             train._trains.append(new_train)
-            break
+
         except ValueError :
             print("Error")
+            exit()
 print("Done")
 
 
-while True :
-    try : 
-        calls_cnt = int(input())
-        break
-    except ValueError :
-        print("Error")
+try : 
+    calls_cnt = int(input())
+except ValueError :
+    print("Error")
+    exit()
+
+def order_manager(date_time,ticket_user_id,ticket_departure,ticket_destination,order = None) :
+
+    new_ticket = ticket(date_time,ticket_user_id,ticket_departure,ticket_destination)
+
+    if order == None :
+        for _train in train._trains :
+            if _train == new_ticket :
+                if _train.sit_reservation() : 
+                    ticket._tickets.append(new_ticket)
+                    person._users.append(person(ticket_user_id))
+                    return True
+
+        return False
+
+    elif order == "cancel" :
+
+        for _ticket in ticket._tickets :
+            if new_ticket == _ticket :
+                for _train in train._trains :
+                    if _train == _ticket :
+                        for user in person._users :
+                            if user.id == ticket_user_id :
+                                if user.last_cancel == None :
+                                    user.reservation_cancelation(new_ticket.date_time)
+                                    ticket._tickets.remove(_ticket)
+                                    _train.sit_cancelation()
+                                    return True
+                                
+                                else :
+                                    if new_ticket.date_time - user.last_cancel >= datetime.timedelta(0,3600) :
+                                        user.reservation_cancelation(new_ticket.date_time)
+                                        ticket._tickets.remove(_ticket)
+                                        _train.sit_cancelation()
+                                        return True
+                            
+                                    else :
+                                        return False
+                        return False
+                    
+                return False
+
+        return False
+
+    else :
+        raise ValueError
 
 for i in range(calls_cnt) :
-    while True :
         try :
-            ticket_date_time ,ticket_user_id ,ticket_departure ,ticktet_destination,*order = map(str ,input().split())
-            if order == [] :
-
-                new_ticket = ticket(ticket_date_time ,ticket_user_id ,ticket_departure ,ticktet_destination,order)
-    
-                for _train in train._trains :
-                    if _train == new_ticket :
-                        if _train.sits > 0 :
-                            print("Movafag")
-                            _train.sits -= 1
-                            ticket._tickets.append(new_ticket)
-                        else :
-                            print("Na movafag")
-
-                        break
-                else :
-                    print("Na Movafag")
-
+            call_order = input().split()
+            if order_manager(*call_order) :
+                print("Movafagh")
             else :
-                new_ticket = ticket(ticket_date_time ,ticket_user_id ,ticket_departure ,ticktet_destination,order)
-                for _ticket in ticket._tickets :
-                    if _ticket == new_ticket :
-                        print("Movafag")
-
-                        break
-                else :
-                    print("Na Movafag")
-
-
-            break
+                print("Na Movafagh")
 
         except ValueError :
             print("Error")
-
-
-    
-
