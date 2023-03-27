@@ -1,4 +1,4 @@
-import jdatetime
+import datetime
 
 
 class ticket :
@@ -25,13 +25,13 @@ class ticket :
         hour = int(ticket_date_time[first_slash_index + 7 : first_slash_index + 9])
         minute = int(ticket_date_time[first_slash_index + 10 : first_slash_index + 12])
 
-        self._date_time = jdatetime.datetime(year ,month ,day ,hour ,minute)
+        self._date_time = datetime.datetime(year ,month ,day ,hour ,minute)
     
     def __eq__(self,other_ticket) :
         if self.departure == other_ticket.departure and self.arrival == other_ticket.arrival and self.user_id == other_ticket.user_id :
             for _train in train._trains :
                 if _train == self :
-                    if other_ticket.date_time - self.date_time >= jdatetime.timedelta(0,3600) :
+                    if other_ticket.date_time - self.date_time >= datetime.timedelta(0,3600) :
                         _train.sits += 1
                         return True
         return False
@@ -61,7 +61,7 @@ class train :
         hour = int(train_date_time[first_slash_index + 7 : first_slash_index + 9])
         minute = int(train_date_time[first_slash_index + 10 : first_slash_index + 12])
 
-        self._date_time = jdatetime.datetime(year ,month ,day ,hour ,minute)
+        self._date_time = datetime.datetime(year ,month ,day ,hour ,minute)
     
     def __ls__(self) :
         pass
