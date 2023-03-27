@@ -1,1 +1,1 @@
-# miniproject
+# object oriented miniproject (mamad maman)
