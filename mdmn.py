@@ -124,7 +124,7 @@ class vehicle(Order) :
         self._destination = destination
         self._date_time = date_time
         self._sits = [Normal_sits ,vip_sits]
-        vehicle.sorts(self)
+        vehicle.vehicles.append(self)
 
     @property
     def _sits(self) :
@@ -159,15 +159,19 @@ class vehicle(Order) :
         return
     
     def __eq__(self,order) :
-        
-        if self._origin == order._origin and self._destination == order._destination and self._vehicle_model == order._vehicle_model :
-            return True
-        return False
-      
+        if not isinstance(order,vehicle) :
+            if self._origin == order._origin and self._destination == order._destination and self._vehicle_model == order._vehicle_model :
+                return True
+            return False
+    
+    def __repr__(self) :
+        return f"{self._date_time}"
     
 class staged_vips :
     staged_vips_list = []
-    def __init__(self,previous_user,vip_class,using_vehicle,date_time) :
+    def __init__(self ,previous_user ,vip_class ,using_vehicle ,date_time ,origin ,destination) :
+        self._origin = origin
+        self._destination = destination
         self._previous_user = previous_user
         self._vip_class = vip_class
         self._vehicle_model = using_vehicle
@@ -191,9 +195,8 @@ class staged_vips :
 
     def __eq__(self,order) :
         try :
-            if self._vip_class == order._level and self._vehicle_model == order._vehicle_model and self._previous_user == order._user_id :
+            if self._vip_class == order._level and self._vehicle_model == order._vehicle_model and self._previous_user == order._user_id and self._origin == order._origin and self._destination == order._destination :
                 return True
-        
             return False
         except AttributeError :
             if id(self) == id(order) :
@@ -258,9 +261,10 @@ class execution :
         
     @classmethod
     def cancelation(cls,order) :
-        tickets_existing_validate = cls.tickets_existing_validation(order)
+        tickets_existing_validate = cls.validation_for_cancelation(order)
+
         if tickets_existing_validate == False :
-            order._answer = "Na Movafagh. Reserve vojood nadarad."
+            return
         else :
             if order._level == 0 :
                 cls.normal_cancelation(*tickets_existing_validate,order)
@@ -280,15 +284,11 @@ class execution :
 
  
     @classmethod
-    def vip_cancelation(cls ,user ,ticket,order) :
+    def vip_cancelation(cls ,user ,ticket ,order) :
         if cls.one_hour_check(user ,order) :
-            if cls.staged_vips_cancelation(order) == False :
-                    staged_vips(order._user_id,order._level,order._vehicle_model,ticket._date_time)
-                    cls.user_cancel_changes(user ,order ,ticket,True)
-                    order._answer = f"Darkhast cancel reserve karbar {order._user_id} baraye belit {order._vehicle_model} VIP{order._level} sabt shod."
-            else :
-                order._answer =  "Na Movafagh. Darkhast cancel shoma qablan sabt shode ast."
-            
+            staged_vips(order._user_id,order._level ,order._vehicle_model ,ticket._date_time,order._origin,order._destination)
+            cls.user_cancel_changes(user ,order ,ticket ,True)
+            order._answer = f"Darkhast cancel reserve karbar {order._user_id} baraye belit {order._vehicle_model} VIP{order._level} sabt shod."
         else :
             order._answer = "Na Movafagh. Shoma dar 1 sa'at akhir darkhast cancel dashtid."
 
@@ -317,18 +317,17 @@ class execution :
     def vip_reservation(cls ,order ,transporter) :
         staged_vip = cls.staged_vips_reservation(order)
         if isinstance(staged_vip,staged_vips) :
-            order._answer = f"Reserve karbar {order._user_id} baraye belit model VIP{order._level} movafagh bood. Hamchenin Reserve karbar {staged_vip._previous_user} baraye in belit cancel shod."
+            order._answer = f"Reserve karbar {order._user_id} baraye belit {order._vehicle_model} model VIP{order._level} movafagh bood. Hamchenin Reserve karbar {staged_vip._previous_user} baraye in belit cancel shod."
             staged_vip.delete()
             return
         
         if cls.sit_check(transporter ,order._level) :
             if cls.thirty_days_vip_check(order) == False :
                 order._answer = "Na Movafagh. Shoma reserve qabli nadarid va nemitavanid VIP reserve konid."
-                return
+                
             else :
                 person(order._user_id,order._date_time,order)
                 transporter.remove(order._level)
-                
                 order._answer = f"Reserve karbar {order._user_id} baraye belit {order._vehicle_model} model VIP{order._level} movafagh bood."
                 return
 
@@ -338,26 +337,46 @@ class execution :
         
     @classmethod
     def quickway(cls,order) :
+
+        validation_3 = True
+
         if order._level > 0 :
             if cls.thirty_days_vip_check(order) == False :
-                order._answer = "Na Movafagh. Shoma reserve qabli nadarid va nemitavanid VIP reserve konid."
-                return   
-        validation_1 = False
-        validation_2 = False
+                validation_3 = False
+            
+
         quickest_vehicle = None
         nearest_time = datetime.timedelta(6000,0)
+        validation_1 = False
+        validation_2 = False
         for transporter in vehicle.vehicles :
+ 
                 if cls.quick_way_transporter_check(transporter,order) :
                     validation_1 = True
                     if cls.sit_check(transporter,order._level) :
                         validation_2 = True
-                        if nearest_time > transporter._date_time - order._date_time :
+                        if nearest_time > transporter._date_time - order._date_time and transporter._date_time - order._date_time > datetime.timedelta(0,0):
                             nearest_time = transporter._date_time - order._date_time
                             quickest_vehicle = transporter
+
+        for staged_vip in staged_vips.staged_vips_list :
+
+            if staged_vip._vip_class == order._level and staged_vip._origin == order._origin and staged_vip._destination == order._destination :
+                raise FileExistsError  
+                validation_1 = True
+                validation_2 = True
+                quickest_vehicle = staged_vip          
+
+
         if validation_1 == False :
             order._answer = "Na Movafagh. Masir vojood nadarad."
+        
         elif validation_2 == False :
             order._answer = "Na Movafagh. Zarfiat vojood nadarad."
+
+        elif validation_3 == False :
+            order._answer =  "Na Movafagh. Shoma reserve qabli nadarid va nemitavanid VIP reserve konid."
+
         else :
             order._vehicle_model = quickest_vehicle._vehicle_model
             order._rule = [None,None]
@@ -365,15 +384,16 @@ class execution :
 
     @classmethod
     def equality_check(cls,order) :
-
         validation_1 = False
         validation_2 = False
             
         for staged_vip in staged_vips.staged_vips_list :
-            if staged_vip._vip_class == order._level and staged_vip._vehicle_model == staged_vip._vehicle_model :
+
+            if staged_vip._vip_class == order._level and staged_vip._vehicle_model == staged_vip._vehicle_model and staged_vip._origin == order._origin and staged_vip._destination == order._destination :
                 validation_1 = True
                 validation_2 = True
                 return staged_vip
+            
                 
         for transporter in vehicle.vehicles :
             if transporter == order :
@@ -381,18 +401,51 @@ class execution :
                 if cls.sit_check(transporter,order._level) :
                     validation_2 = True
                     return transporter
-
         if validation_1 == False :
             order._answer = "Na Movafagh. Masir vojood nadarad."
+            
         elif validation_2 == False :
-            order._answer = "Na Movafagh. Zarfiat vojood nadarad."
+            order._answer = "Na Movafagh. Zarfiat vojood nadarad." 
 
+        return False
+
+    @classmethod
+    def validation_for_cancelation(cls ,order) :
+        if order._level == 0 :
+            validation = cls.tickets_existing_validation(order) 
+            if validation == False :
+                order._answer = "Na Movafagh. Reserve vojood nadarad." 
+                return False
+            else :
+                return validation
+        else :
+            validation_1 = cls.staged_vips_cancelation(order)
+            validation_2 =  cls.tickets_existing_validation(order)
+            if validation_1 == True :
+                order._answer = "Na Movafagh. Darkhast cancel shoma qablan sabt shode ast."
+                return False
+            elif validation_1 == False and validation_2 == False :
+                order._answer =  "Na Movafagh. Reserve vojood nadarad."                          
+                return False
+            elif validation_1 == True and validation_2 == False:
+                return validation_2 
+            elif validation_1 == False and validation_2 != False :
+                return validation_2
+
+    @staticmethod
+    def person_vip_validation(order) :
+        for user in person.users :
+            if user._user_id == order._user_id :
+                for ticket in user._tickets :
+                    if ticket._level >= 0 :
+                        return True
         return False
 
     @staticmethod
     def quick_way_transporter_check(transporter,order) :
-        if transporter._origin == order._origin and transporter._destination == order._destination   :
+        if transporter._origin == order._origin and transporter._destination == order._destination    :
             return True
+        
         return False
 
     @staticmethod
@@ -407,14 +460,13 @@ class execution :
         for staged_vip in staged_vips.staged_vips_list :
             if staged_vip == order :
                 return True
-            else :
-                return False
+            
         return False
     
     @staticmethod
     def staged_vips_reservation(order) :
         for staged_vip in staged_vips.staged_vips_list :
-            if staged_vip._vip_class == order._level and staged_vip._vehicle_model == staged_vip._vehicle_model :
+            if staged_vip._vip_class == order._level and staged_vip._vehicle_model == staged_vip._vehicle_model and staged_vip._origin == order._origin and staged_vip._destination == order._destination:
 
                 return staged_vip
         
@@ -424,7 +476,7 @@ class execution :
     def thirty_days_vip_check(order) :
         for user in person.users :
             if user._user_id == order._user_id :
-                if order._date_time - user._last_buy_date_time <= datetime.timedelta(30) :
+                if order._date_time - user._last_buy_date_time < datetime.timedelta(30) :
                     return True
                 
         return False
@@ -443,7 +495,7 @@ class execution :
                     if ticket._origin == order._origin and ticket._destination == order._destination and ticket._level == order._level and ticket._vehicle_model == order._vehicle_model :
                         for transporter in vehicle.vehicles :
                             if transporter == order :
-                                if transporter._date_time > order._date_time :
+                                if transporter._date_time >= order._date_time :
 
                                     return [user,ticket]
                                 else :
@@ -494,6 +546,7 @@ print("Done")
 try :
     n = int(input())
     for i in range(n) :
+
         Order(*input().split()) 
 except ValueError :
    print("Error")
@@ -508,10 +561,17 @@ except ValueError :
     exit()
 
 try :
-    for order in Order.orders :
+    for order in Order.orders_not_sorted :
      
         print(order._answer)
 except ValueError :
     print("Error")
     exit()
+
+#for transporter in vehicle.vehicles :
+
+    #print(transporter)
+
+#for order in Order.orders :
+    #print(order)
 
