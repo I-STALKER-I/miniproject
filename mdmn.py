@@ -90,6 +90,13 @@ class Order :
                     self.level = int(shifters[1])
                 elif shifters[1] == None and isinstance(int(shifters[0]),int) :
                     self.level = 0
+                elif shifters[1] == "cancel" :
+                    self.level = int(shifters[0])
+
+
+
+        else :
+            self.level = 0
 
     @property
     def _rule(self) :
@@ -161,18 +168,17 @@ class order_laws(Order) :
         elif entry_line[1] == "Reserve" and entry_line[3] == "dar" :
             self._action = 'saat'
             self._vehicle_model = entry_line[2]
-            self._begin_time = entry_line[5]
-            self._end_time = entry_line[7]
+            self._begin_time = self.date_time_maker(entry_line[5])
+            self._end_time = self.date_time_maker(entry_line[7])
 
         elif entry_line[1] == "Emkan" :
 
             self._action  = "Emkan"
             self._vehicle_model = entry_line[4]
-            self._times_per_period = entry_line[7]
+            self._times_per_period = int(entry_line[7])
             self._period = entry_line[10]
 
         else :
-            print(entry_line[1])
             raise ValueError
         
         Order.sort(self)
@@ -209,13 +215,21 @@ class order_laws(Order) :
     def add_number(cls) :
         cls.counter += 1
 
+    @staticmethod
+    def  date_time_maker(string) :
+        hour = int(string)
+        return datetime.time(hour)
 
 
 class vehicle(Order) :
     vehicles = []
         
     def __init__(self ,vehicle_model ,origin ,destination ,date_time ,Normal_sits ,vip_sits = None) :
-        flag = True
+        
+        """be aware that time means hour and seconds and etc...
+           but times means how many times"""
+        self._time_limiter = {}
+        self._times_limiter = {}
         self._vehicle_model = vehicle_model
         self._origin = origin
         self._destination = destination
@@ -223,6 +237,8 @@ class vehicle(Order) :
         self._sits_calculator = [Normal_sits ,vip_sits]
         self._sits = self._sits_calculator
         self._const_sits = self._sits_calculator
+        self._reserves_datetime_list = []
+        self._reserves_counter = 0
         self._reservers = None
         vehicle.vehicles.append(self)
 
@@ -289,15 +305,23 @@ class vehicle(Order) :
     def __repr__(self) :
         return f"{self._date_time}"
     
+class transporter_limiter :
+    def __init__(self,end_time,reservation_count,limitaion_count) :
+        self._end_time = end_time
+        self._reserves = reservation_count
+        self._limitation_cnt = limitaion_count
+
+
 class staged_vips :
     staged_vips_list = []
-    def __init__(self ,previous_user ,vip_class ,using_vehicle ,date_time ,origin ,destination) :
+    def __init__(self ,previous_user ,vip_class ,using_vehicle ,date_time ,origin ,destination,transporter) :
         self._origin = origin
         self._destination = destination
         self._previous_user = previous_user
         self._level = vip_class
         self._vehicle_model = using_vehicle
         self._date_time = date_time
+        self._transporter = transporter
         staged_vips.sort(self)
     
     @classmethod
@@ -398,11 +422,17 @@ class execution :
             cls.age_limitation(order)
 
         elif order._action == "saat" :
-            cls.time_limitaion(order)
+            cls.time_limitation(order)
 
         elif order._action == "Emkan" :
 
             cls.times_limitation(order)
+
+    @classmethod
+    def times_limitation(cls,order) :
+        for transporter in vehicle.vehicles :
+            if transporter._vehicle_model == order._vehicle_model :
+                cls.transporter_times_limit_set(transporter,order._period,order._times_per_period,order)
 
     @classmethod
     def capacity_change(cls ,order) :
@@ -423,6 +453,12 @@ class execution :
                             order._answer = f"Reserve karbar {reserve._user_id} baraye airplane model VIP1 be dadil qanoon {order._law_number} cancel shod."
 
     @classmethod
+    def time_limitation(self ,order) :
+        for transporter in vehicle.vehicles :
+            if transporter._vehicle_model  == order._vehicle_model :
+                transporter._time_limiter[order._begin_time] = order._end_time
+
+    @classmethod
     def cancelation(cls,order) :
         tickets_existing_validate = cls.validation_for_cancelation(order)
 
@@ -437,7 +473,7 @@ class execution :
 
 
     @classmethod
-    def normal_cancelation(cls ,user ,ticket ,order) :
+    def normal_cancelation(cls ,user ,ticket ,transporter ,order) :
         if cls.one_hour_check(user ,order) :
             cls.user_cancel_changes(user ,order ,ticket)
             order._answer = f"Reserve karbar {order._user_id} baraye {order._vehicle_model} ba movafaghiat cancel shod.‍‍"
@@ -447,9 +483,9 @@ class execution :
 
  
     @classmethod
-    def vip_cancelation(cls ,user ,ticket ,order) :
+    def vip_cancelation(cls ,user ,ticket ,transporter ,order) :
         if cls.one_hour_check(user ,order) :
-            staged_vips(order._user_id,order._level ,order._vehicle_model ,ticket._date_time,order._origin,order._destination)
+            staged_vips(order._user_id,order._level ,order._vehicle_model ,ticket._date_time,order._origin,order._destination,transporter)
             cls.user_cancel_changes(user ,order ,ticket ,True)
             order._answer = f"Darkhast cancel reserve karbar {order._user_id} baraye belit {order._vehicle_model} VIP{order._level} sabt shod."
         else :
@@ -474,7 +510,10 @@ class execution :
             person(order._user_id,order._date_time,order)
             transporter._reservers = order
             transporter.remove(order._level)
+            transporter._reserves_datetime_list.append(order._date_time)
+
             order._answer = f"Reserve karbar {order._user_id} baraye belit {order._vehicle_model} model Normal movafagh bood."
+            cls.transporter_limiter_add(transporter,order)
             return
         
     @classmethod
@@ -494,7 +533,10 @@ class execution :
                 person(order._user_id,order._date_time,order)
                 transporter._reservers = order
                 transporter.remove(order._level)
+
                 order._answer = f"Reserve karbar {order._user_id} baraye belit {order._vehicle_model} model VIP{order._level} movafagh bood."
+                transporter._reserves_datetime_list.append(order._date_time)
+                cls.transporter_limiter_add(transporter,order)
                 return
 
         else :
@@ -552,28 +594,42 @@ class execution :
     def equality_check(cls,order) :
         validation_1 = False
         validation_2 = False
+        validation_3 = False
+
+        for transporter in vehicle.vehicles :
+            if transporter == order :
+                validation_1 = True
+                if cls.sit_check(transporter,order._level) :
+                    validation_2 = True
+                    if cls.transporter_time_limit_check(transporter,order) == True :
+                        if cls.transporter_times_limit_check(transporter,order) == True :
+                            validation_3 = True
+                            answer =  transporter
+                            break
             
         for staged_vip in staged_vips.staged_vips_list :
 
             if staged_vip._level == order._level and staged_vip._vehicle_model == staged_vip._vehicle_model and staged_vip._origin == order._origin and staged_vip._destination == order._destination :
                 validation_1 = True
                 validation_2 = True
-                return staged_vip
-            
+                answer = staged_vip
+                break
                 
-        for transporter in vehicle.vehicles :
-            if transporter == order :
-                validation_1 = True
-                if cls.sit_check(transporter,order._level) :
-                    validation_2 = True
-                    return transporter
         if validation_1 == False :
             order._answer = "Na Movafagh. Masir vojood nadarad."
-            
+            return False
         elif validation_2 == False :
             order._answer = "Na Movafagh. Zarfiat vojood nadarad." 
+            return False
+        elif validation_3 == False :
+            order._answer = "Na Movafagh. Emkan reserve vojood nadarad"
+            return False
+        
+        else :
 
-        return False
+            return answer
+        
+        
 
     @classmethod
     def validation_for_cancelation(cls ,order) :
@@ -623,6 +679,69 @@ class execution :
                             order._answer = f"Reserve karbar {user._user_id} baraye {reserve._vehicle_model} model {cls.level_finder(reserve)} be dadil qanoon {order._law_number} cancel shod."
                     transporter._reservers.remove(reserve)
                     break
+
+    @staticmethod
+    def transporter_limiter_add(transporter,order) :
+        if len(transporter._times_limiter) == 0 :
+            return
+        else :
+            
+            for limit in transporter._times_limiter :
+                
+                if order._date_time < limit :
+                    transporter._times_limiter[limit][1] += 1
+
+    @staticmethod
+    def transporter_times_limit_check(transporter,order) :
+        for limit in transporter._times_limiter :
+            if limit > order._date_time :
+                if transporter._times_limiter[limit][0] <= transporter._times_limiter[limit][1] :
+                    return False
+
+        return True
+
+
+    @staticmethod
+    def transporter_times_limit_set(transporter,time,times,order) :
+        counter = 0
+        if time == "rooz" :
+            for datetimes in transporter.reserves_datetime_list :
+                if datetimes.day == order._date_time.day :
+                    counter += 1
+
+            transporter._times_limiter[order._date_time + datetime.timedelta(1)] = [times,counter]
+        elif time == "hafte" :
+            for datetimes in transporter._reserves_datetime_list :
+                aweek = datetime.timedelta(7)
+                begin = datetimes - aweek
+                end = datetimes
+                if begin <= order._date_time <= end :
+                    counter += 1
+
+            transporter._times_limiter[order._date_time + datetime.timedelta(7)] = [times,counter]
+        elif time == "maah" :
+            for datetimes in transporter._reservers_datetime_list :
+                if datetimes.month == order._date_time.month :
+                    counter += 1
+
+            transporter._times_limiter[order._date_time + datetime.timedelta(30)] = [times,counter]
+
+        
+
+        else :
+            raise SystemError
+        
+
+        return counter
+
+
+    @staticmethod
+    def transporter_time_limit_check(transporter,order) :
+        for time in transporter._time_limiter :
+            if time <= order._date_time.time() <= transporter._time_limiter[time] :
+                return False
+
+        return True
     
     @staticmethod
     def level_finder(order) :
@@ -692,6 +811,13 @@ class execution :
             if transporter._date_time < order._date_time :
                 vehicle.vehicles.remove(transporter)
 
+        for transporter in vehicle.vehicles :
+
+            for limitation in transporter._times_limiter :
+                if limitation <= order._date_time :
+                    transporter._times_limiter.pop(limitation)
+                    break
+
     @staticmethod
     def tickets_existing_validation(order) :
         for user in person.users :
@@ -702,7 +828,7 @@ class execution :
                             if transporter == order :
                                 if transporter._date_time >= order._date_time :
 
-                                    return [user,ticket]
+                                    return [user,ticket,transporter]
                                 else :
                                     return False
         
@@ -745,7 +871,7 @@ try :
 except ValueError :
     print("Error")
     exit()
-except ArithmeticError:
+except TypeError :
     print("Error")
     exit()
 
@@ -779,3 +905,4 @@ try :
 except ValueError :
     print("Error")
     exit()
+
