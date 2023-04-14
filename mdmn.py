@@ -962,11 +962,3 @@ except ValueError :
     print("Error")
     exit()
 
-
-try :
-    for order in Order.orders_not_sorted :
-     
-        print(order._answer)
-except ValueError :
-    print("Error")
-    exit()
